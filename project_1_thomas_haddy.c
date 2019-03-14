@@ -216,7 +216,7 @@ void bubbleSortCol(int **arr, int size, int col) {
 }
 
 /* 
-   Swaps x and y 
+   Swaps x and y
 */
 void swap(int *x, int *y) {
   int temp = *x;
