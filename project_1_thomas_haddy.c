@@ -1,4 +1,15 @@
-/* Author: Thomas Haddy */
+/* 
+   Author: Thomas Haddy
+   Date: 3/14/19
+   
+   This file contains all of the functions necessary to
+   complete shearsort on a file called "input.txt".
+   The "input.txt" can contain a n x n 2D integer array
+   formatted like:
+   1 2 3
+   4 5 6
+   7 8 9
+*/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,9 +57,12 @@ int main(void) {
 }
 
 /*
-  Gets the size by counting the number of '\n' in the "input.txt"
-  3 x 3 will return 3
-  6 x 6 will return 6
+  Gets the size by counting the number of '\n' in the "input.txt".
+  
+  char *filename is the given file name of the 2D array.
+  
+  3 x 3 array will return 3
+  6 x 6 array will return 6
  */
 int getSize(char *fileName) {
 
@@ -71,7 +85,11 @@ int getSize(char *fileName) {
 
 /*
   Reads from the "input.txt" file and puts the integer
-  values into an allocated 2D array
+  values into an allocated 2D array.
+  
+  char *fileName: the given  file name of the 2D array.
+  int **arr: the 2D array.
+  int size: the size of the 2D array 
  */
 void readFile(char *fileName, int **arr, int size) {
   
@@ -91,6 +109,9 @@ void readFile(char *fileName, int **arr, int size) {
 
 /*
   Prints a 'size' x 'size' array to the terminal
+  
+  int **arr: the 2D array
+  int size: the size of the 2D array
  */
 void print2DArr(int **arr, int size) {
   int i, j;
@@ -104,7 +125,10 @@ void print2DArr(int **arr, int size) {
 }
 
 /*
-  Allocates memory to a dynamic 2D array 
+  Allocates memory to a dynamic 2D array
+  
+  int row: number of rows
+  int col: number of columns
 */
 void **allocate2DArr(int row, int col) {
   int i;
@@ -127,6 +151,9 @@ void **allocate2DArr(int row, int col) {
 /* 
    Creates the threads needed to complete shearsort and calls shearsort
    inside pthread_create()
+   
+   int **arr: the 2D array
+   int size: the size of the 2D array
 */
 void startShearesortThreads(int **arr, int size) {
   int i;
@@ -142,7 +169,7 @@ void startShearesortThreads(int **arr, int size) {
     pthread_create(&threads[i], NULL, shearesort, (void *) shearsort_args);
   }
 
-  /* Wait for all the threads to exit */
+  /* Waits for all of the threads to exit */
   for(i = 0; i < size; i++) {
     pthread_join(threads[i], NULL);
   }
@@ -151,7 +178,9 @@ void startShearesortThreads(int **arr, int size) {
 /*
   Starts shearsort by getting the numbber of phases. 
   Then it bubblesorts the rows
-  on the even phases and bubblesorts the columns on the odd phases
+  on the even phases and bubblesorts the columns on the odd phases.
+  
+  void *ptr: Void pointer used for getting the shearsort arguments
  */
 void *shearesort(void *ptr) {
   int i;
@@ -166,17 +195,19 @@ void *shearesort(void *ptr) {
 
   int numPhases = ceil(2 * (log10((double) size) / log10(2.0))) + 1;
   for(i = 0; i < numPhases; i++) {
-    /* Even Phases */
+    /* Even Phases --> sort rows */
     if(i % 2 == 0) {
       bubbleSortRow(arr, size, threadNum);
     }
-    /* Odd Phases */
+    /* Odd Phases --> sort columns */
     else {
       bubbleSortCol(arr, size, threadNum);
     }
+    /* Start the next phase */
     startNextPhase(arr, size, my_mutex);
   }
-  
+
+  /* Free my_mutex */
   pthread_mutex_destroy(&my_mutex);
 }
 
@@ -184,6 +215,10 @@ void *shearesort(void *ptr) {
   Sorts a row of the 2D array.
   if the row is odd, it reverse sorts it.
   else the row is even, so it normal sorts it
+  
+  int **arr: the 2D array
+  int size: the size of the 2D array
+  int row: the row to sort
  */
 void bubbleSortRow(int **arr, int size, int row) {
   int i, j, comparator;
@@ -203,6 +238,10 @@ void bubbleSortRow(int **arr, int size, int row) {
 
 /*
   Sorts a column of the 2D array. It normal sorts it no matter if it's even or odd
+
+  int **arr: the 2D array
+  int size: the size of the 2D array
+  int col: the column to be sorted
  */
 void bubbleSortCol(int **arr, int size, int col) {
   int i, j;
@@ -217,6 +256,9 @@ void bubbleSortCol(int **arr, int size, int col) {
 
 /* 
    Swaps x and y
+
+   int *x: the first element
+   int *y: the second element
 */
 void swap(int *x, int *y) {
   int temp = *x;
@@ -225,9 +267,14 @@ void swap(int *x, int *y) {
 }
 
 /*
-  Blah.2
+  Starts the next phase, whether it is sorting a new row or column
+
+  int **arr: the 2D array
+  int size: the size of the 2D array
+  pthread_mutex_t my_mutex: the given mutex for a pthread
  */
 void startNextPhase(int **arr, int size, pthread_mutex_t my_mutex) {
+
   /* Announce that you're finished */
   pthread_mutex_lock(&mutex);
   numReady++;
@@ -237,7 +284,7 @@ void startNextPhase(int **arr, int size, pthread_mutex_t my_mutex) {
   }
   pthread_mutex_unlock(&mutex);
 
-  /* Wait for all threads to finish there work, then move on */
+  /* Wait for all threads to finish their work, then move on */
   pthread_mutex_lock(&my_mutex);
   if(numReady == 0) {
     pthread_cond_broadcast(&nextPhase);
@@ -250,6 +297,9 @@ void startNextPhase(int **arr, int size, pthread_mutex_t my_mutex) {
 
 /*
   Frees the allocation space of the given 'size' x 'size' arr
+
+  int **arr: the 2D array
+  int size: the sizze of the 2D array
 */
 void free2DArr(void **arr, int size) {
   int i;
