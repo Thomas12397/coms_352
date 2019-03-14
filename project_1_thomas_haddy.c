@@ -225,7 +225,7 @@ void swap(int *x, int *y) {
 }
 
 /*
-  Blah
+  Blah.2
  */
 void startNextPhase(int **arr, int size, pthread_mutex_t my_mutex) {
   /* Announce that you're finished */
