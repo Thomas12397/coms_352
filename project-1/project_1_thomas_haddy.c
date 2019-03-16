@@ -1,6 +1,6 @@
 /* 
    Author: Thomas Haddy
-   Date: 3/14/19
+   Date: 3/15/19
    
    This file contains all of the functions necessary to
    complete shearsort on a file called "input.txt".
@@ -20,27 +20,31 @@
 
 typedef struct {
   int **arr;
-  int size;
+  int length;
   int threadNum;
-} shearsort_args_t;
+} args_t;
 
 int getSize(char *fName);
 void readFile(char *fName, int **arr);
 void print2DArr(int **arr);
 void **allocate2DArr();
 void *shearesort(void *ptr);
+void readInArgs(void *ptr);
 void swap(int *x, int *y);
-void bubblesortCol(int **arr, int col);
-void bubblesortRow(int **arr, int row);
-void startNextPhase(int **arr, pthread_mutex_t mutex);
+void sortCol(int **arr, int col);
+void sortRow(int **arr, int row);
+int figureOutHowToSort(int row);
+void startNext(int **arr, pthread_mutex_t mutex);
 
 /*
   Counter made to print the 2D array
  */
 int readyToPrintArray;
 pthread_mutex_t global_mutex;
-pthread_cond_t nextPhase;
-/* size of the 2D array */
+pthread_cond_t next;
+/* 
+   size of the 2D array 
+*/
 int n;
 
 /*
@@ -52,12 +56,12 @@ int main(void) {
   int i;
   n = getSize("input.txt");
   pthread_mutex_init(&global_mutex, NULL);
-  pthread_cond_init(&nextPhase, NULL);
+  pthread_cond_init(&next, NULL);
   int **arr = (int **) allocate2DArr();
   readFile("input.txt", arr);
   print2DArr(arr);
 
-  shearsort_args_t *shearsort_args;
+  args_t *args;
   readyToPrintArray = 0;
   pthread_t *threads = (pthread_t *) malloc(n * sizeof(pthread_t));
   if (threads == NULL) {
@@ -66,12 +70,12 @@ int main(void) {
   }
   
   for(i = 0; i < n; i++) {
-    shearsort_args = (shearsort_args_t *) malloc(sizeof(shearsort_args_t));
-    shearsort_args->arr = arr;
-    shearsort_args->size = n;
-    shearsort_args->threadNum = i;
+    args = (args_t *) malloc(sizeof(args_t));
+    args->arr = arr;
+    args->length = n;
+    args->threadNum = i;
     /* Calls shearsort on the threads */
-    pthread_create(&threads[i], NULL, shearesort, (void *) shearsort_args);
+    pthread_create(&threads[i], NULL, shearesort, (void *) args);
   }
 
   /* Waits for all of the threads to exit */
@@ -84,15 +88,14 @@ int main(void) {
     free(arr[i]);
   }
   free(arr);
-
-  pthread_cond_destroy(&nextPhase);
   pthread_mutex_destroy(&global_mutex);
+  pthread_cond_destroy(&next);
 }
 
 /*
   Gets the size by counting the number of '\n' in the "input.txt".
   
-  char *filename is the given file name of the 2D array.
+  char *fName: the given file name of the 2D array.
   
   3 x 3 array will return 3
   6 x 6 array will return 6
@@ -121,9 +124,8 @@ int getSize(char *fName) {
   Reads from the "input.txt" file and puts the integer
   values into an allocated 2D array.
   
-  char *fileName: the given  file name of the 2D array.
+  char *fName: the given  file name of the 2D array.
   int **arr: the 2D array.
-  int size: the size of the 2D array
  */
 void readFile(char *fName, int **arr) {
   
@@ -133,7 +135,8 @@ void readFile(char *fName, int **arr) {
     return;
   }
   
-  int row, col;
+  int row;
+  int col;
   for(row = 0; row < n; row++) {
     for(col = 0; col < n; col++) {
       fscanf(file, "%d", &(arr[row][col]));
@@ -149,7 +152,8 @@ void readFile(char *fName, int **arr) {
  */
 void print2DArr(int **arr) {
 
-  int row, col;
+  int row;
+  int col;
   for(row = 0; row < n; row++) {
     for(col = 0; col < n; col++) {
       printf("%d ", arr[row][col]);
@@ -193,25 +197,25 @@ void *shearesort(void *ptr) {
   int i;
   pthread_mutex_t mutex;
   pthread_mutex_init(&mutex, NULL);
-
+  
   /* Read in all info from the void pointer and then free it */
-  int **arr = ((shearsort_args_t *) ptr) -> arr; 
-  int size = ((shearsort_args_t *) ptr) -> size;
-  int threadNum = ((shearsort_args_t *) ptr) -> threadNum;
+  int **arr = ((args_t *) ptr) -> arr; 
+  int length = ((args_t *) ptr) -> length;
+  int threadNum = ((args_t *) ptr) -> threadNum;
   free(ptr);
+  int numPhases = ceil(2 * (log10((double) length) / log10(2.0))) + 1;
 
-  int numPhases = ceil(2 * (log10((double) size) / log10(2.0))) + 1;
   for(i = 0; i < numPhases; i++) {
     /* Odd Phases --> sort columns */
     if (i % 2 == 1) {
-      bubblesortCol(arr, threadNum);
+      sortCol(arr, threadNum);
     }
     /* Even Phases --> sort rows */
     else {
-      bubblesortRow(arr, threadNum);
+      sortRow(arr, threadNum);
     }
     /* Start the next phase */
-    startNextPhase(arr, mutex);
+    startNext(arr, mutex);
   }
 
   /* Free mutex */
@@ -224,9 +228,10 @@ void *shearesort(void *ptr) {
   int **arr: the 2D array
   int col: the column to be sorted
  */
-void bubblesortCol(int **arr, int col) {
+void sortCol(int **arr, int col) {
 
-  int i, j;
+  int i;
+  int j;
   for(i = 0; i < n - 1; i++) {
     for(j = 0; j < n - i -1; j++) {
       if(arr[j][col] > arr[j+1][col]) {
@@ -244,18 +249,13 @@ void bubblesortCol(int **arr, int col) {
   int **arr: the 2D array
   int row: the row to sort
  */
-void bubblesortRow(int **arr, int row) {
+void sortRow(int **arr, int row) {
 
-  int i, j, comparator;
-  
-  /* Odd --> true --> -1 --> Reverse sort*/
-  if (row % 2 == 1) {
-    comparator = -1;
-  }
-  /* Even --> false --> 1 --> Normal sort*/
-  else {
-    comparator = 1;
-  }
+  int i;
+  int j;
+  int comparator;
+
+  comparator = figureOutHowToSort(row);
 
   for(i = 0; i < n - 1; i++) {
     for(j = 0; j < n - i - 1; j++) {
@@ -263,6 +263,21 @@ void bubblesortRow(int **arr, int row) {
         swap(&arr[row][j], &arr[row][j+1]);
       }
     }
+  }
+}
+
+/*
+  Checks to see how to sort the row. If it's an odd row, reverse sort
+  Otherwise it's even, normal sort it
+ */
+int figureOutHowToSort(int row) {
+  /* Odd --> true --> -1 --> Reverse sort*/
+  if (row % 2 == 1) {
+    return -1;
+  }
+  /* Even --> false --> 1 --> Normal sort*/
+  else {
+    return 1;
   }
 }
 
@@ -283,9 +298,9 @@ void swap(int *x, int *y) {
   Starts the next phase, whether it is sorting a new row or column
 
   int **arr: the 2D array
-  pthread_mutex_t my_mutex: the given mutex for a pthread
+  pthread_mutex_t mutex: the given mutex for a pthread
  */
-void startNextPhase(int **arr, pthread_mutex_t mutex) {
+void startNext(int **arr, pthread_mutex_t mutex) {
 
   /* Announce that threads are finished */
   pthread_mutex_lock(&mutex);
@@ -299,10 +314,10 @@ void startNextPhase(int **arr, pthread_mutex_t mutex) {
   /* Wait for all of the threads to finish, then move on */
   pthread_mutex_lock(&mutex);
   if(readyToPrintArray == 0) {
-    pthread_cond_broadcast(&nextPhase);
+    pthread_cond_broadcast(&next);
     pthread_mutex_unlock(&mutex);
   }
   else {
-    pthread_cond_wait(&nextPhase, &mutex);
+    pthread_cond_wait(&next, &mutex);
   }
 }

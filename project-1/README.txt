@@ -1,6 +1,6 @@
 README Project 1 COM S 352
 Author: Thomas Haddy
-Date: 3/14/19
+Date: 3/15/19
 
 Project contents:
 - project-1-thomas-haddy.c
