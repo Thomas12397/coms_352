@@ -24,43 +24,69 @@ typedef struct {
   int threadNum;
 } shearsort_args_t;
 
-int getSize(char *fileName);
-void readFile(char *fileName, int **arr, int size);
-void print2DArr(int **arr, int size);
-void **allocate2DArr(int row, int col);
-void startShearesortThreads(int **arr, int size);
+int getSize(char *fName);
+void readFile(char *fName, int **arr);
+void print2DArr(int **arr);
+void **allocate2DArr();
 void *shearesort(void *ptr);
 void swap(int *x, int *y);
-void bubblesortCol(int **arr, int size, int col);
-void bubblesortRow(int **arr, int size, int row);
-void startNextPhase(int **arr, int size, pthread_mutex_t my_mutex);
-void free2DArr(void **arr, int size);
+void bubblesortCol(int **arr, int col);
+void bubblesortRow(int **arr, int row);
+void startNextPhase(int **arr, pthread_mutex_t mutex);
 
 /*
   Counter made to print the 2D array
  */
 int readyToPrintArray;
-pthread_mutex_t mutex;
+pthread_mutex_t global_mutex;
 pthread_cond_t nextPhase;
+/* size of the 2D array */
+int n;
 
 /*
   The main function will conduct shearsort on a 2D array
   Then free the allocated memory
  */
 int main(void) {
-  
-  int size = getSize("input.txt");
-  pthread_mutex_init(&mutex, NULL);
+
+  int i;
+  n = getSize("input.txt");
+  pthread_mutex_init(&global_mutex, NULL);
   pthread_cond_init(&nextPhase, NULL);
-  int **arr = (int **) allocate2DArr(size, size);
-  readFile("input.txt", arr, size);
-  print2DArr(arr, size);
-  startShearesortThreads(arr, size);
+  int **arr = (int **) allocate2DArr();
+  readFile("input.txt", arr);
+  print2DArr(arr);
+
+  shearsort_args_t *shearsort_args;
+  readyToPrintArray = 0;
+  pthread_t *threads = (pthread_t *) malloc(n * sizeof(pthread_t));
+  if (threads == NULL) {
+    fprintf(stderr, "Out of memory\n");
+    return -1;
+  }
+  
+  for(i = 0; i < n; i++) {
+    shearsort_args = (shearsort_args_t *) malloc(sizeof(shearsort_args_t));
+    shearsort_args->arr = arr;
+    shearsort_args->size = n;
+    shearsort_args->threadNum = i;
+    /* Calls shearsort on the threads */
+    pthread_create(&threads[i], NULL, shearesort, (void *) shearsort_args);
+  }
+
+  /* Waits for all of the threads to exit */
+  for(i = 0; i < n; i++) {
+    pthread_join(threads[i], NULL);
+  }
   
   /* Cleaning up allocation */
-  free2DArr((void **) arr, size);
+  for(i = 0; i < n; i++) {
+    free(arr[i]);
+  }
+  free(arr);
+
   pthread_cond_destroy(&nextPhase);
-  pthread_mutex_destroy(&mutex);
+  pthread_mutex_destroy(&global_mutex);
 }
 
 /*
@@ -71,10 +97,10 @@ int main(void) {
   3 x 3 array will return 3
   6 x 6 array will return 6
  */
-int getSize(char *fileName) {
+int getSize(char *fName) {
 
   int size = 0;
-  FILE *file = fopen(fileName, "r");
+  FILE *file = fopen(fName, "r");
   if (file == NULL) {
     fprintf(stderr, "File not found from getSize()\n");
     return -1;
@@ -99,17 +125,17 @@ int getSize(char *fileName) {
   int **arr: the 2D array.
   int size: the size of the 2D array
  */
-void readFile(char *fileName, int **arr, int size) {
+void readFile(char *fName, int **arr) {
   
-  FILE *file = fopen(fileName, "r");
+  FILE *file = fopen(fName, "r");
   if (file == NULL) {
     fprintf(stderr, "File not found from readFromFile()\n");
     return;
   }
   
   int row, col;
-  for(row = 0; row < size; row++) {
-    for(col = 0; col < size; col++) {
+  for(row = 0; row < n; row++) {
+    for(col = 0; col < n; col++) {
       fscanf(file, "%d", &(arr[row][col]));
     }
   }
@@ -117,16 +143,15 @@ void readFile(char *fileName, int **arr, int size) {
 }
 
 /*
-  Prints a 'size' x 'size' array to the terminal
+  Prints a 'n' x 'n' array to the terminal
   
   int **arr: the 2D array
-  int size: the size of the 2D array
  */
-void print2DArr(int **arr, int size) {
+void print2DArr(int **arr) {
 
   int row, col;
-  for(row = 0; row < size; row++) {
-    for(col = 0; col < size; col++) {
+  for(row = 0; row < n; row++) {
+    for(col = 0; col < n; col++) {
       printf("%d ", arr[row][col]);
     }
     printf("\n");
@@ -136,59 +161,24 @@ void print2DArr(int **arr, int size) {
 
 /*
   Allocates memory to a dynamic 2D array
-  
-  int row: number of rows
-  int col: number of columns
 */
-void **allocate2DArr(int row, int col) {
+void **allocate2DArr() {
 
   int i;
-  void **arr = malloc(row * sizeof(int *));
+  void **arr = malloc(n * sizeof(int *));
   if (arr == NULL) {
     fprintf(stderr, "Out of memory\n");
     return NULL;
   }
   
-  for(i = 0; i < row; i++) {
-    arr[i] = malloc(col * sizeof(int));
+  for(i = 0; i < n; i++) {
+    arr[i] = malloc(n * sizeof(int));
     if (arr[i] == NULL) {
       fprintf(stderr, "Out of memory\n");
       return NULL;
     }
   }
   return arr;
-}
-
-/* 
-   Creates the threads needed to complete shearsort and calls shearsort
-   inside pthread_create()
-   
-   int **arr: the 2D array
-   int size: the size of the 2D array
-*/
-void startShearesortThreads(int **arr, int size) {
-
-  int i;
-  shearsort_args_t *shearsort_args;
-  readyToPrintArray = 0;
-  pthread_t *threads = (pthread_t *) malloc(size * sizeof(pthread_t));
-  if (threads == NULL) {
-    fprintf(stderr, "Out of memory\n");
-    return;
-  }
-  
-  for(i = 0; i < size; i++) {
-    shearsort_args = (shearsort_args_t *) malloc(sizeof(shearsort_args_t));
-    shearsort_args->arr = arr;
-    shearsort_args->size = size;
-    shearsort_args->threadNum = i;
-    pthread_create(&threads[i], NULL, shearesort, (void *) shearsort_args);
-  }
-
-  /* Waits for all of the threads to exit */
-  for(i = 0; i < size; i++) {
-    pthread_join(threads[i], NULL);
-  }
 }
 
 /*
@@ -201,8 +191,8 @@ void startShearesortThreads(int **arr, int size) {
 void *shearesort(void *ptr) {
 
   int i;
-  pthread_mutex_t my_mutex;
-  pthread_mutex_init(&my_mutex, NULL);
+  pthread_mutex_t mutex;
+  pthread_mutex_init(&mutex, NULL);
 
   /* Read in all info from the void pointer and then free it */
   int **arr = ((shearsort_args_t *) ptr) -> arr; 
@@ -214,32 +204,31 @@ void *shearesort(void *ptr) {
   for(i = 0; i < numPhases; i++) {
     /* Odd Phases --> sort columns */
     if (i % 2 == 1) {
-      bubblesortCol(arr, size, threadNum);
+      bubblesortCol(arr, threadNum);
     }
     /* Even Phases --> sort rows */
     else {
-      bubblesortRow(arr, size, threadNum);
+      bubblesortRow(arr, threadNum);
     }
     /* Start the next phase */
-    startNextPhase(arr, size, my_mutex);
+    startNextPhase(arr, mutex);
   }
 
-  /* Free my_mutex */
-  pthread_mutex_destroy(&my_mutex);
+  /* Free mutex */
+  pthread_mutex_destroy(&mutex);
 }
 
 /*
   Sorts a column of the 2D array. It normal sorts it no matter if it's even or odd
 
   int **arr: the 2D array
-  int size: the size of the 2D array
   int col: the column to be sorted
  */
-void bubblesortCol(int **arr, int size, int col) {
+void bubblesortCol(int **arr, int col) {
 
   int i, j;
-  for(i = 0; i < size - 1; i++) {
-    for(j = 0; j < size - i -1; j++) {
+  for(i = 0; i < n - 1; i++) {
+    for(j = 0; j < n - i -1; j++) {
       if(arr[j][col] > arr[j+1][col]) {
         swap(&arr[j][col], &arr[j+1][col]);
       }
@@ -253,19 +242,23 @@ void bubblesortCol(int **arr, int size, int col) {
   else the row is even, so it normal sorts it
   
   int **arr: the 2D array
-  int size: the size of the 2D array
   int row: the row to sort
  */
-void bubblesortRow(int **arr, int size, int row) {
+void bubblesortRow(int **arr, int row) {
 
   int i, j, comparator;
   
   /* Odd --> true --> -1 --> Reverse sort*/
+  if (row % 2 == 1) {
+    comparator = -1;
+  }
   /* Even --> false --> 1 --> Normal sort*/
-  comparator = (row % 2 == 1 ? -1 : 1);
+  else {
+    comparator = 1;
+  }
 
-  for(i = 0; i < size - 1; i++) {
-    for(j = 0; j < size - i - 1; j++) {
+  for(i = 0; i < n - 1; i++) {
+    for(j = 0; j < n - i - 1; j++) {
       if(comparator * arr[row][j] > comparator * arr[row][j+1]) {
         swap(&arr[row][j], &arr[row][j+1]);
       }
@@ -290,42 +283,26 @@ void swap(int *x, int *y) {
   Starts the next phase, whether it is sorting a new row or column
 
   int **arr: the 2D array
-  int size: the size of the 2D array
   pthread_mutex_t my_mutex: the given mutex for a pthread
  */
-void startNextPhase(int **arr, int size, pthread_mutex_t my_mutex) {
+void startNextPhase(int **arr, pthread_mutex_t mutex) {
 
   /* Announce that threads are finished */
   pthread_mutex_lock(&mutex);
   readyToPrintArray++;
-  if(readyToPrintArray == size) {
-    print2DArr(arr, size);
+  if(readyToPrintArray == n) {
+    print2DArr(arr);
     readyToPrintArray = 0;
   }
   pthread_mutex_unlock(&mutex);
 
   /* Wait for all of the threads to finish, then move on */
-  pthread_mutex_lock(&my_mutex);
+  pthread_mutex_lock(&mutex);
   if(readyToPrintArray == 0) {
     pthread_cond_broadcast(&nextPhase);
-    pthread_mutex_unlock(&my_mutex);
+    pthread_mutex_unlock(&mutex);
   }
   else {
-    pthread_cond_wait(&nextPhase, &my_mutex);
+    pthread_cond_wait(&nextPhase, &mutex);
   }
-}
-
-/*
-  Frees the allocation space of the given 'size' x 'size' 2D array
-
-  int **arr: the 2D array
-  int size: the size of the 2D array
-*/
-void free2DArr(void **arr, int size) {
-
-  int i;
-  for(i = 0; i < size; i++) {
-    free(arr[i]);
-  }
-  free(arr);
 }
