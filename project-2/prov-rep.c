@@ -1,5 +1,7 @@
 #include <stdio.h>
 
-void printWorld() {
-  printf(" World!\n");
+int main() {
+
+  
+  return 0;
 }

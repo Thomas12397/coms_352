@@ -1,6 +1,7 @@
 #ifndef ALLOC_H
 #define ALLOC_H
 
-void printHello();
+void readFile();
+void mapFile();
 
 #endif

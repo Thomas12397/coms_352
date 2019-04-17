@@ -1,5 +1,6 @@
-make: main.c alloc.c prov-rep.c
-	gcc -o project2 main.c alloc.c prov-rep.c -I.
+make: alloc.c prov-rep.c
+	gcc -o alloc alloc.c -I.
+	gcc -o prov-rep prov-rep.c -I.
 
 clean:
-	rm project2
+	rm alloc prov-rep
