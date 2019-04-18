@@ -2,6 +2,6 @@
 #define ALLOC_H
 
 void readFile();
-void mapFile();
+char * init_map_file();
 
 #endif

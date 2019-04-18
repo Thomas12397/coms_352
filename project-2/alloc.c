@@ -1,30 +1,59 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 #include "alloc.h"
 
 int main() {
 
-  char resp_y_n[2];
-  char resp_res_num_val[4];
+  char resp_y_n;
+  int res_type, res_val;
 
-  //readFile();
-  mapFile();
+  /*Opening the file*/
+  int filedesc = open("res.txt", O_RDWR);
+  if (filedesc == -1) {
+    fprintf(stderr, "Could not open \"res.txt\"\n");
+    exit(EXIT_FAILURE);
+  }
+
+  /*Get the file size*/
+  struct stat buf;
+  fstat(filedesc, &buf);
+  off_t size =  buf.st_size;
+
+   /*Map the file*/
+  char *map_region = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, filedesc, 0);
+  if (map_region == MAP_FAILED) {
+    close(filedesc);
+    fprintf(stderr, "Error mapping the file");
+    exit(EXIT_FAILURE);
+  }
+
+  msync(map_region, size, MS_SYNC);
+  printf("Synchronized\n");
   
-  printf("Allocate more resources(y/n)? ");
-  scanf("%c", resp_y_n);
-  if (*resp_y_n == 'y') {
+  do {
+    printf("\nAllocate more resources(y/n)? ");
+    scanf("%c", &resp_y_n);
     
+    if (resp_y_n == 'y') {
+      printf("Enter the resource number and number of resources needed: ");
+      scanf("%d %d", &res_type, &res_val);
+    }
+    
+  } while (resp_y_n != 'n');
+
+   /*Un-map the file*/
+  if (munmap(map_region, size) == -1) {
+    fprintf(stderr, "Error un-mapping the file");
+    exit(EXIT_FAILURE);
   }
-  else if (*resp_y_n == 'n') {
-    return 0;
-  }
-  else {
-    printf("\nYou didn't type (y/n). Exiting...\n");
-    return 0;
-  }
-  
-  
+
+  munmap(map_region, size);
+  close(filedesc);
   return 0;
 }
 
@@ -56,19 +85,5 @@ void readFile() {
     }
   }
   
-  fclose(file);
-}
-
-void mapFile() {
-
-  FILE *file;
-  int size = 0;
-  file = fopen("res.txt", "r");
-  
-  fseek(file, 0, SEEK_END);
-  size = ftell(file);
-  rewind(file);
-  printf("%d\n", size);
-
   fclose(file);
 }
