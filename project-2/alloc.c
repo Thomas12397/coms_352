@@ -4,86 +4,99 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-
+#include <string.h>
 #include "alloc.h"
 
 int main() {
 
   char resp_y_n;
   int res_type, res_val;
+  int filedesc, size;
+  char *map_region;
 
   /*Opening the file*/
-  int filedesc = open("res.txt", O_RDWR);
-  if (filedesc == -1) {
-    fprintf(stderr, "Could not open \"res.txt\"\n");
-    exit(EXIT_FAILURE);
-  }
+  filedesc = open_file();
 
   /*Get the file size*/
-  struct stat buf;
-  fstat(filedesc, &buf);
-  off_t size =  buf.st_size;
+  size = get_file_size(filedesc);
 
-   /*Map the file*/
-  char *map_region = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, filedesc, 0);
-  if (map_region == MAP_FAILED) {
-    close(filedesc);
-    fprintf(stderr, "Error mapping the file");
-    exit(EXIT_FAILURE);
-  }
-
-  msync(map_region, size, MS_SYNC);
-  printf("Synchronized\n");
+   /*Initially map the file*/
+  map_region = init_mem_map_file(filedesc, size);
   
+  /* User input for program */
   do {
-    printf("\nAllocate more resources(y/n)? ");
+    printf("Allocate more resources(y/n)? ");
     scanf("%c", &resp_y_n);
-    
+  
     if (resp_y_n == 'y') {
-      printf("Enter the resource number and number of resources needed: ");
-      scanf("%d %d", &res_type, &res_val);
+      printf("Enter the resource number type: ");
+      scanf("%d", &res_type);
+      printf("Enter the number of resources needed: ");
+      scanf("%d", &res_val);
+      alloc_mem_map_file(map_region, res_type, res_val);
     }
-    
+
   } while (resp_y_n != 'n');
 
-   /*Un-map the file*/
-  if (munmap(map_region, size) == -1) {
-    fprintf(stderr, "Error un-mapping the file");
-    exit(EXIT_FAILURE);
-  }
-
-  munmap(map_region, size);
+  /* Deallocate everything */
+  unmap_mem_map_file(map_region, size);
   close(filedesc);
   return 0;
 }
 
-void readFile() {
+int open_file() {
 
-  int counter = 0;
-  int numEntries = 0;
-  
-  FILE *file;
-  file = fopen("res.txt", "r");
-
-  int size = 0;
-  fseek(file, 0, SEEK_END);
-  size = ftell(file);
-  rewind(file);
-  numEntries = size / 4;
-  
-  int resources[numEntries][2];
-  
-  if (file) {
-    
-    int i, j;
-    for (i = 0; i < numEntries; i++) {
-      for (j = 0; j < 2; j++) {
-	fscanf (file, "%d", &resources[i][j]);
-	printf("%d ", resources[i][j]);
-      }
-      printf("\n");
-    }
+  int fd;
+  fd = open("res.txt", O_RDWR);
+  if (fd == -1) {
+    fprintf(stderr, "Could not open \"res.txt\"\n");
+    return -1;
   }
-  
-  fclose(file);
+  return fd;
+}
+
+int get_file_size(int fd) {
+
+  struct stat buf;
+  fstat(fd, &buf);
+  return buf.st_size;
+}
+
+char* init_mem_map_file(int fd, int size) {
+
+  char *map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  if (map == MAP_FAILED) {
+    close(fd);
+    fprintf(stderr, "Error mapping the file");
+    return NULL;
+  }
+
+  return map;
+}
+
+void alloc_mem_map_file(char *map, int rt, int rv) {
+
+  if (rt > 9 || rt < 0 || rv > 9 || rv < 0) {
+    fprintf(stderr, "There was an invalid number typed. Must be between 0 and 9\n");
+  }
+
+  char *text;
+  sprintf(text, "%d", rt);
+  memcpy(map, text, sizeof(char));
+}
+
+void sync_mem_map_file(char *map, int size) {
+
+  if (msync(map, size, MS_SYNC) == -1) {
+    fprintf(stderr, "Error syncing the file");
+    return;
+  }
+  printf("Synchronized");
+}
+
+void unmap_mem_map_file(char *map, int size) {
+
+  if (munmap(map, size) == -1) {
+    fprintf(stderr, "Error un-mapping the file");
+  }
 }
