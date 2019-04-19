@@ -26,14 +26,14 @@ int main() {
   /* User input for program */
   do {
     printf("Allocate more resources(y/n)? ");
-    scanf("%c", &resp_y_n);
+    scanf(" %c", &resp_y_n);
   
     if (resp_y_n == 'y') {
       printf("Enter the resource number type: ");
       scanf("%d", &res_type);
       printf("Enter the number of resources needed: ");
       scanf("%d", &res_val);
-      alloc_mem_map_file(map_region, res_type, res_val);
+      alloc_mem_map_file(map_region, size, filedesc, res_type, res_val);
     }
 
   } while (resp_y_n != 'n');
@@ -74,15 +74,39 @@ char* init_mem_map_file(int fd, int size) {
   return map;
 }
 
-void alloc_mem_map_file(char *map, int rt, int rv) {
-
-  if (rt > 9 || rt < 0 || rv > 9 || rv < 0) {
+void alloc_mem_map_file(char *map, int size, int fd, int rt, int rv) {
+  
+  char rv_str[2];
+  
+  if (rt > 9 || rt < 0 || rv > 9 || rv < 1) {
     fprintf(stderr, "There was an invalid number typed. Must be between 0 and 9\n");
+    return;
   }
 
-  char *text;
-  sprintf(text, "%d", rt);
-  memcpy(map, text, sizeof(char));
+  
+  FILE *file = fdopen(fd, "r+");
+
+  int i;
+  int res_type_read_in, res_val_read_in;
+  for (i = 2; i < size; i = i + 8) {
+    fseek(file, i, SEEK_SET);
+    fscanf(file, "%d", &res_type_read_in);
+    if (res_type_read_in == rt) {
+      fseek(file, i + 4, SEEK_SET);
+      fscanf(file, "%d", &res_val_read_in);
+      if (res_val_read_in - rv >= 0) {
+	res_val_read_in -= rv;
+	sprintf(rv_str, "%d", res_val_read_in);
+	fseek(file, i + 4, SEEK_SET);
+	fwrite(rv_str, 1, 2, file);
+	break;
+      }
+    }
+  }
+
+  fclose(file);
+  fd = open("res.txt", O_RDWR);
+  sync_mem_map_file(map, size);
 }
 
 void sync_mem_map_file(char *map, int size) {
@@ -91,7 +115,7 @@ void sync_mem_map_file(char *map, int size) {
     fprintf(stderr, "Error syncing the file");
     return;
   }
-  printf("Synchronized");
+  printf("Synchronized\n");
 }
 
 void unmap_mem_map_file(char *map, int size) {
@@ -100,3 +124,5 @@ void unmap_mem_map_file(char *map, int size) {
     fprintf(stderr, "Error un-mapping the file");
   }
 }
+
+
