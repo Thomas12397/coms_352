@@ -4,7 +4,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <string.h>
 #include "alloc.h"
 
 int main() {
@@ -76,24 +75,23 @@ char* init_mem_map_file(int fd, int size) {
 
 void alloc_mem_map_file(char *map, int size, int fd, int rt, int rv) {
   
-  char rv_str[2];
-  
   if (rt > 9 || rt < 0 || rv > 9 || rv < 1) {
     fprintf(stderr, "There was an invalid number typed. Must be between 0 and 9\n");
     return;
   }
-
   
   FILE *file = fdopen(fd, "r+");
-
-  int i;
-  int res_type_read_in, res_val_read_in;
+  char rv_str[2];
+  int i, res_type_read_in, res_val_read_in;
+  /*Go through the file */
   for (i = 2; i < size; i = i + 8) {
     fseek(file, i, SEEK_SET);
     fscanf(file, "%d", &res_type_read_in);
+    /* Check if the resource types match */
     if (res_type_read_in == rt) {
       fseek(file, i + 4, SEEK_SET);
       fscanf(file, "%d", &res_val_read_in);
+      /* Check if the resource value can be subtracted from the corresponding type */
       if (res_val_read_in - rv >= 0) {
 	res_val_read_in -= rv;
 	sprintf(rv_str, "%d", res_val_read_in);
@@ -103,9 +101,10 @@ void alloc_mem_map_file(char *map, int size, int fd, int rt, int rv) {
       }
     }
   }
-
+  
+  
   fclose(file);
-  fd = open("res.txt", O_RDWR);
+  fd = open_file();
   sync_mem_map_file(map, size);
 }
 
