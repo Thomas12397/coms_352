@@ -56,6 +56,10 @@ int open_file() {
 
 int get_file_size(int fd) {
 
+  if (fd == -1) {
+    fprintf(stderr, "\"res.txt\" is not open. Couldn't get size\n");
+    return -1;
+  }
   struct stat buf;
   fstat(fd, &buf);
   return buf.st_size;
@@ -114,7 +118,7 @@ void sync_mem_map_file(char *map, int size) {
     fprintf(stderr, "Error syncing the file");
     return;
   }
-  printf("Synchronized\n");
+  printf("Synced successfully.\n");
 }
 
 void unmap_mem_map_file(char *map, int size) {

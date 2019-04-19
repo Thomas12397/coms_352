@@ -24,46 +24,46 @@ int main() {
 
    /*Initially map the file*/
   map_region = init_mem_map_file(filedesc, size);
-  if(fork() == 0) { //CHILD PROCESS
-    while(resp_y_n!='n'){
+
+  /* Child Process */
+  if(fork() == 0) {
+    while(resp_y_n!='n') {
+
       usleep(10000000);
       printf("Report:\n");
       printf("Page size is: %d\n\n", getpagesize());
-      
-      printf("Current state of resources:\n\n");
-      FILE* file = fopen("res.txt", "r");
-      int temp = 0;
-      
-      fscanf(file, "%d", &temp);
-      while(!feof(file)){
-	printf("%d        ", temp);
-	fscanf(file, "%d", &temp);
-	printf("%d\n", temp);
-	fscanf(file, "%d", &temp);
-      }
 
+      printf("Current state of resources:\n\n");
+      int ch;
+      FILE *file = fdopen(filedesc, "r");
+      if (file) {
+	while ((ch = getc(file)) != EOF) {
+	  printf("%c", ch);
+	}
+	fclose(file);
+	filedesc = open_file();
+      }
       
-      unsigned char *vec;
+      
+      /*unsigned char *vec;
       vec = calloc(1, (size + getpagesize() - 1)/getpagesize());
       mincore(map_region, size, vec);
       
-      //this probably aint right
-      printf("Cached blocks: \n");
-      for (size_t i = 0; i <= size / getpagesize(); ++i){
-        if (vec[i] & 1){
-	  printf("Page %ld: Resident\n", i);
-	  //printf("%lu ", (unsigned long int)i);
-	}
-      }
+      printf("Cached blocks of `%s':\n", argv[1]);
+      for (size_t i = 0; i <= stat.st_size / ps; ++i)
+        if (vec[i] & 1)
+	  printf("%lu ", (unsigned long int)i);
       
       fputc('\n', stdout);
       
       free(vec);
-      fclose(file);
-      fflush(stdout);
+      munmap(addr, stat.st_size);
+      close(filedesc);
+      fflush(stdout); */
     }
   }
-  else { //PARENT PROCESS
+  /* Parent Process */
+  else {
     do {
       printf("Allocate more resources(y/n)? ");
       scanf(" %c", &resp_y_n);
@@ -99,6 +99,10 @@ int open_file() {
 
 int get_file_size(int fd) {
 
+  if (fd == -1) {
+    fprintf(stderr, "\"res.txt\" is not open. Couldn't get size\n");
+    return -1;
+  }
   struct stat buf;
   fstat(fd, &buf);
   return buf.st_size;
@@ -156,7 +160,7 @@ void sync_mem_map_file(char *map, int size) {
     fprintf(stderr, "Error syncing the file");
     return;
   }
-  printf("Synchronized\n");
+  printf("Synced successfully.\n");
 }
 
 void unmap_mem_map_file(char *map, int size) {
