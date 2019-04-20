@@ -1,3 +1,8 @@
+/*
+  Author: Thomas Haddy
+  Date:   4/19/19
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -7,6 +12,9 @@
 #include <sys/sem.h>
 #include "alloc.h"
 
+/*
+  The semaphore to enforce mutual exclusion with read/write to the input file
+ */
 int sem;
 
 int main() {
@@ -57,6 +65,11 @@ int main() {
   return 0;
 }
 
+/* Opens the input file.
+   
+   Return: returns the file descriptor of the input file
+
+ */
 int open_file() {
 
   int fd;
@@ -68,6 +81,11 @@ int open_file() {
   return fd;
 }
 
+/* Gets the size of the input file.
+   int fd: The file descriptor of the input file
+   
+   Return: returns the size of the input file
+ */
 int get_file_size(int fd) {
 
   if (fd == -1) {
@@ -79,6 +97,12 @@ int get_file_size(int fd) {
   return buf.st_size;
 }
 
+/* Initializes the memory mapped file.
+   int fd: The file descriptor of the input file
+   int size: The size of the input file
+
+   Return: returns the memory mapped file as string
+ */
 char* init_mem_map_file(int fd, int size) {
 
   char *map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -91,6 +115,13 @@ char* init_mem_map_file(int fd, int size) {
   return map;
 }
 
+/* Simulates allocating(subtracting) resources to the text file. The reosurce type's value is updated.
+   char *map: The memory mapped file
+   int size: The size of the input file
+   int fd: The file descriptor of the input file
+   int rt: The resource type passed in from the user
+   int rv: The resource value passed in from the user
+ */
 void alloc_mem_map_file(char *map, int size, int fd, int rt, int rv) {
 
   struct sembuf sem_op;
@@ -126,8 +157,7 @@ void alloc_mem_map_file(char *map, int size, int fd, int rt, int rv) {
 	break;
       }
     }
-  }
-  
+  }  
   
   fclose(file);
 
@@ -141,6 +171,10 @@ void alloc_mem_map_file(char *map, int size, int fd, int rt, int rv) {
   sync_mem_map_file(map, size);
 }
 
+/* Synchronizes the memory mapped file with the physical file on the disk
+   char *map: The memory mapped file
+   int size: The size of the input file
+ */
 void sync_mem_map_file(char *map, int size) {
 
   if (msync(map, size, MS_SYNC) == -1) {
@@ -150,6 +184,10 @@ void sync_mem_map_file(char *map, int size) {
   printf("Synced successfully.\n");
 }
 
+/* Unmaps the memory mapped file.
+   char *map: The memory mapped file
+   int size: The size of the input file
+ */
 void unmap_mem_map_file(char *map, int size) {
 
   if (munmap(map, size) == -1) {

@@ -15,6 +15,9 @@
 #include "prov-rep.h"
 #include "alloc.h"
 
+/*
+  The semaphore to enforce mutual exclusion with read/write to the input file
+ */
 int sem;
 
 int main() {
@@ -79,19 +82,19 @@ int main() {
 	filedesc = open_file();
       }
       
-      unsigned char *vec;
-      vec = calloc(1, (size + getpagesize() - 1)/getpagesize());
-      mincore(map_region, size, vec);
+      unsigned char *vector;
+      vector = calloc(1, (size + getpagesize() - 1)/getpagesize());
+      mincore(map_region, size, vector);
       
       printf("Cached blocks: \n");
       for (size_t i = 0; i <= size / getpagesize(); ++i){
-        if (vec[i] & 1){
+        if (vector[i] & 1){
 	  printf("Page %ld: Resident\n", i);
 	}
       }
       
       fputc('\n', stdout);
-      free(vec); 
+      free(vector); 
       fclose(file);
 
       /* Semaphore signal */
@@ -204,12 +207,15 @@ void new_alloc_mem_map_file(char *map, int size, int fd, int rt, int rv) {
 
   int i;
   int res_type_read_in, res_val_read_in;
+  /*Go through the file */
   for (i = 2; i < size; i = i + 8) {
     fseek(file, i, SEEK_SET);
     fscanf(file, "%d", &res_type_read_in);
+    /* Check if the resource types match */
     if (res_type_read_in == rt) {
       fseek(file, i + 4, SEEK_SET);
       fscanf(file, "%d", &res_val_read_in);
+      /* Check if the resource value can be added from the corresponding type */
       if (res_val_read_in + rv < 10) {
 	res_val_read_in += rv;
 	sprintf(rv_str, "%d", res_val_read_in);
