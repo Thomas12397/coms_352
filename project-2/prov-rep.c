@@ -1,3 +1,8 @@
+/* 
+   Author: Thomas Haddy
+   Date:   4/19/19
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -5,9 +10,12 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <sys/sem.h>
 
 #include "prov-rep.h"
 #include "alloc.h"
+
+int sem;
 
 int main() {
 
@@ -15,6 +23,8 @@ int main() {
   int res_type, res_val;
   int filedesc, size;
   char *map_region;
+  FILE *file;
+  struct sembuf sem_op;
 
   /*Opening the file*/
   filedesc = open_file();
@@ -25,41 +35,72 @@ int main() {
    /*Initially map the file*/
   map_region = init_mem_map_file(filedesc, size);
 
+  /* Create the semaphore for mutual exclusion */
+  sem = semget(1, 1, IPC_CREAT | 0600);
+  if (sem == -1) {
+    fprintf(stderr, "Semaphore was not created correctly.\n");
+    return 1;
+  }
+
+  int rc;
+  rc = semctl(sem, 0, SETVAL, 1);
+
   /* Child Process */
   if(fork() == 0) {
-    while(resp_y_n!='n') {
+    while(1) {
 
       usleep(10000000);
-      printf("Report:\n");
+      
+      printf("\nReport:\n");
       printf("Page size is: %d\n\n", getpagesize());
 
       printf("Current state of resources:\n\n");
+
+      /* Semaphore waits */
+      sem_op.sem_num = 0;
+      sem_op.sem_op = -1;   
+      sem_op.sem_flg = 0;
+      semop(sem, &sem_op, 1);
+      
+      file = fdopen(filedesc, "r");
       int ch;
-      FILE *file = fdopen(filedesc, "r");
       if (file) {
-	while ((ch = getc(file)) != EOF) {
+	while ((ch = fgetc(file)) != EOF) {
 	  printf("%c", ch);
 	}
 	fclose(file);
+
+	/* Semaphore signal */
+	sem_op.sem_num = 0;
+	sem_op.sem_op = 1;   
+	sem_op.sem_flg = 0;
+	semop(sem, &sem_op, 1);
+	
 	filedesc = open_file();
       }
       
-      
-      /*unsigned char *vec;
+      unsigned char *vec;
       vec = calloc(1, (size + getpagesize() - 1)/getpagesize());
       mincore(map_region, size, vec);
       
-      printf("Cached blocks of `%s':\n", argv[1]);
-      for (size_t i = 0; i <= stat.st_size / ps; ++i)
-        if (vec[i] & 1)
-	  printf("%lu ", (unsigned long int)i);
+      printf("Cached blocks: \n");
+      for (size_t i = 0; i <= size / getpagesize(); ++i){
+        if (vec[i] & 1){
+	  printf("Page %ld: Resident\n", i);
+	}
+      }
       
       fputc('\n', stdout);
+      free(vec); 
+      fclose(file);
+
+      /* Semaphore signal */
+      sem_op.sem_num = 0;
+      sem_op.sem_op = 1;   
+      sem_op.sem_flg = 0;
+      semop(sem, &sem_op, 1);
       
-      free(vec);
-      munmap(addr, stat.st_size);
-      close(filedesc);
-      fflush(stdout); */
+      fflush(stdout);
     }
   }
   /* Parent Process */
@@ -86,6 +127,11 @@ int main() {
   return 0;
 }
 
+/* Opens the input file.
+   
+   Return: returns the file descriptor of the input file
+
+ */
 int open_file() {
 
   int fd;
@@ -97,6 +143,11 @@ int open_file() {
   return fd;
 }
 
+/* Gets the size of the input file.
+   int fd: The file descriptor of the input file
+   
+   Return: returns the size of the input file
+ */
 int get_file_size(int fd) {
 
   if (fd == -1) {
@@ -108,6 +159,12 @@ int get_file_size(int fd) {
   return buf.st_size;
 }
 
+/* Initializes the memory mapped file.
+   int fd: The file descriptor of the input file
+   int size: The size of the input file
+
+   Return: returns the memory mapped file as string
+ */
 char* init_mem_map_file(int fd, int size) {
 
   char *map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -120,15 +177,29 @@ char* init_mem_map_file(int fd, int size) {
   return map;
 }
 
+/* Simulates adding resources to the text file. The reosurce type's value is updated.
+   char *map: The memory mapped file
+   int size: The size of the input file
+   int fd: The file descriptor of the input file
+   int rt: The resource type passed in from the user
+   int rv: The resource value passed in from the user
+ */
 void new_alloc_mem_map_file(char *map, int size, int fd, int rt, int rv) {
 
   char rv_str[2];
+  struct sembuf sem_op;
 
   if (rt > 9 || rt < 0 || rv > 9 || rv < 1) {
     fprintf(stderr, "There was an invalid number typed. Must be between 0 and 9\n");
     return;
   }
 
+  /* Semaphore waits */
+  sem_op.sem_num = 0;
+  sem_op.sem_op = -1;   
+  sem_op.sem_flg = 0;
+  semop(sem, &sem_op, 1);
+  
   FILE *file = fdopen(fd, "r+");
 
   int i;
@@ -150,10 +221,21 @@ void new_alloc_mem_map_file(char *map, int size, int fd, int rt, int rv) {
   }
 
   fclose(file);
+
+  /* Semaphore signal */
+  sem_op.sem_num = 0;
+  sem_op.sem_op = 1;   
+  sem_op.sem_flg = 0;
+  semop(sem, &sem_op, 1);
+  
   fd = open_file();
   sync_mem_map_file(map, size);
 }
 
+/* Synchronizes the memory mapped file with the physical file on the disk
+   char *map: The memory mapped file
+   int size: The size of the input file
+ */
 void sync_mem_map_file(char *map, int size) {
 
   if (msync(map, size, MS_SYNC) == -1) {
@@ -163,6 +245,10 @@ void sync_mem_map_file(char *map, int size) {
   printf("Synced successfully.\n");
 }
 
+/* Unmaps the memory mapped file.
+   char *map: The memory mapped file
+   int size: The size of the input file
+ */
 void unmap_mem_map_file(char *map, int size) {
 
   if (munmap(map, size) == -1) {

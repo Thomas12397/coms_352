@@ -4,7 +4,10 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/sem.h>
 #include "alloc.h"
+
+int sem;
 
 int main() {
 
@@ -12,6 +15,7 @@ int main() {
   int res_type, res_val;
   int filedesc, size;
   char *map_region;
+  struct sembuf sem_op;
 
   /*Opening the file*/
   filedesc = open_file();
@@ -21,6 +25,16 @@ int main() {
 
    /*Initially map the file*/
   map_region = init_mem_map_file(filedesc, size);
+
+  /* Create the semaphore for mutual exclusion */
+  sem = semget(1, 1, IPC_CREAT | 0600);
+  if (sem == -1) {
+    fprintf(stderr, "Semaphore was not created correctly.\n");
+    return 1;
+  }
+
+  int rc;
+  rc = semctl(sem, 0, SETVAL, 1);
   
   /* User input for program */
   do {
@@ -78,11 +92,19 @@ char* init_mem_map_file(int fd, int size) {
 }
 
 void alloc_mem_map_file(char *map, int size, int fd, int rt, int rv) {
+
+  struct sembuf sem_op;
   
   if (rt > 9 || rt < 0 || rv > 9 || rv < 1) {
     fprintf(stderr, "There was an invalid number typed. Must be between 0 and 9\n");
     return;
   }
+
+  /* Semaphore waits */
+  sem_op.sem_num = 0;
+  sem_op.sem_op = -1;   
+  sem_op.sem_flg = 0;
+  semop(sem, &sem_op, 1);
   
   FILE *file = fdopen(fd, "r+");
   char rv_str[2];
@@ -108,6 +130,13 @@ void alloc_mem_map_file(char *map, int size, int fd, int rt, int rv) {
   
   
   fclose(file);
+
+  /* Semaphore signal */
+  sem_op.sem_num = 0;
+  sem_op.sem_op = 1;   
+  sem_op.sem_flg = 0;
+  semop(sem, &sem_op, 1);
+  
   fd = open_file();
   sync_mem_map_file(map, size);
 }
